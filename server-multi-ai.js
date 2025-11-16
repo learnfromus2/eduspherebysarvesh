@@ -3557,7 +3557,12 @@ CONVERSATION CONTEXT: Maintain continuity and build upon previous discussions to
       console.log('🌐 Launching Playwright browser...');
       browser = await chromium.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu'
+        ]
       });
 
       const context = await browser.newContext();
