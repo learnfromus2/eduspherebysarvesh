@@ -3706,11 +3706,11 @@ CONVERSATION CONTEXT: Maintain continuity and build upon previous discussions to
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; font-size: 9pt; line-height: 1.4; white-space: pre-wrap; }
-    .header { text-align: center; border: 2px solid #000; padding: 8px 10px; margin-bottom: 6px; }
-    .header h1 { font-size: 16pt; font-weight: bold; margin-bottom: 6px; }
-    .header-info { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 6px; font-size: 8pt; line-height: 1.3; }
+    .header { text-align: center; border: 2px solid #000; padding: 10px 15px; margin-bottom: 6px; }
+    .header h1 { font-size: 18pt; font-weight: bold; margin-bottom: 8px; }
+    .header-info { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 9pt; line-height: 1.4; }
     .header-left, .header-right { text-align: left; flex: 1; }
-    .header-center { font-size: 12pt; font-weight: bold; text-align: center; flex: 1; }
+    .header-center { font-size: 14pt; font-weight: bold; text-align: center; flex: 1; }
     .section-title { border: 1px dotted #000; padding: 3px 6px; display: inline-block; margin: 8px 0 6px 0; font-weight: bold; font-size: 9pt; }
     
     /* Two-column layout for questions */
