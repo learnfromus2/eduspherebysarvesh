@@ -18675,7 +18675,14 @@
                 </button>
             </form>
 
-           
+            <div class="demo-credentials">
+                <p>
+                    <strong>Demo Credentials:</strong><br>
+                    <strong>Student:</strong> student / student123<br>
+                    <strong>Teacher:</strong> teacher / teacher123<br>
+                    <strong>Admin:</strong> admin / admin123
+                </p>
+            </div>
         </div>
     </div>
 
@@ -23474,24 +23481,15 @@
 
         // API Base URL - auto-detect the correct server port
         function getAPIBase() {
-            // Check if there's a custom API URL set (for separate deployments)
-            const customApiUrl = 'eduspherebackendbysarvesh.onrender.com'; // Will be replaced during deployment
-            
-            // If custom URL is set and not the placeholder, use it
-            if (customApiUrl && !customApiUrl.includes('PLACEHOLDER')) {
-                return customApiUrl;
-            }
-            
-            // For local development
+            // If we're on localhost and the current port is not the server port, try common server ports
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                return 'http://localhost:3000';
+                const currentPort = window.location.port;
+                // Try the current origin first, then fallback to common server ports
+                return window.location.origin;
             }
-            
-            // For same-server deployment (fallback)
             return window.location.origin;
         }
         const API_BASE = getAPIBase();
-        console.log('🌐 API Base URL:', API_BASE);
 
         // Test LaTeX dropdown functionality
         function testLatexDropdown() {
@@ -43042,30 +43040,15 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                 // Download the PDF
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
-                
-                // Detect if mobile device
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                
-                if (isMobile) {
-                    // On mobile, open in new tab
-                    window.open(url, '_blank');
-                    console.log(`✅ ${type} PDF opened in new tab (mobile)`);
-                    
-                    // Clean up after a delay
-                    setTimeout(() => {
-                        window.URL.revokeObjectURL(url);
-                    }, 1000);
-                } else {
-                    // On desktop, download
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${config.schoolName || 'GYANMANJARI'}_${config.paperTitle || 'MOCK'}_${type}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    console.log(`✅ ${type} PDF downloaded successfully (desktop)`);
-                }
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${config.schoolName || 'GYANMANJARI'}_${config.paperTitle || 'MOCK'}_${type}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                console.log(`✅ ${type} PDF downloaded successfully`);
             } catch (error) {
                 console.error(`❌ Error generating ${type} PDF:`, error);
                 throw error;
