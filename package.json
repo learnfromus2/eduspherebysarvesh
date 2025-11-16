@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server-multi-ai.js",
     "dev": "nodemon server-multi-ai.js",
-    "postinstall": "echo 'Skipping browser installation - using bundled browsers'"
+     "postinstall": "playwright install --with-deps chromium"
+    
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
