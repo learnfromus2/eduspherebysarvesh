@@ -36,7 +36,7 @@ const initializeServer = async () => {
   const PORT = await findAvailablePort(3000);
 
   // MongoDB Connection
-  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://sarvesh:sarvesh9925@cluster0.kdzhsuc.mongodb.net/?retryWrites=true&w=majority';
+  const MONGODB_URI = process.env.MONGODB_URI ;
 
   try {
     await mongoose.connect(MONGODB_URI);
@@ -155,7 +155,10 @@ const initializeServer = async () => {
     description: { type: String },
     questionIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
     totalQuestions: { type: Number, required: true },
+    marksPerQuestion: { type: Number, default: 4 }, // Marks awarded for each correct answer
     negativeMarking: { type: Boolean, default: true }, // Enable/disable negative marking
+    negativeMarks: { type: Number, default: -1 }, // Marks deducted for wrong answer (25% of marksPerQuestion)
+    totalMarks: { type: Number }, // Total marks for the test (totalQuestions * marksPerQuestion)
     createdBy: { type: String, required: true },
     isPublic: { type: Boolean, default: true },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },

@@ -18,8 +18,75 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>EduSphere Pro | Next-Gen JEE/NEET Platform</title>
+    
+    <!-- Device Detection Script - Must run FIRST -->
+    <script>
+        // Detect device type on first load and store it
+        (function() {
+            const detectDeviceType = () => {
+                const ua = navigator.userAgent.toLowerCase();
+                const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+                const isTablet = /(ipad|tablet|playbook|silk)|(android(?!.*mobile))/i.test(ua);
+                const touchPoints = navigator.maxTouchPoints || navigator.msMaxTouchPoints || 0;
+                
+                // Check if device has touch capability and small screen
+                const hasTouch = ('ontouchstart' in window) || (touchPoints > 0);
+                const screenWidth = window.screen.width;
+                const screenHeight = window.screen.height;
+                const smallScreen = Math.min(screenWidth, screenHeight) <= 926;
+                
+                // Determine device type
+                let deviceType = 'desktop';
+                if (isMobile || (hasTouch && smallScreen)) {
+                    deviceType = 'mobile';
+                } else if (isTablet || (hasTouch && screenWidth <= 1024)) {
+                    deviceType = 'tablet';
+                }
+                
+                return deviceType;
+            };
+            
+            // Store device type in localStorage and as data attribute
+            const deviceType = detectDeviceType();
+            localStorage.setItem('deviceType', deviceType);
+            document.documentElement.setAttribute('data-device-type', deviceType);
+            
+            // Also add as body class when DOM is ready
+            if (document.body) {
+                document.body.classList.add('device-' + deviceType);
+            } else {
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.classList.add('device-' + deviceType);
+                });
+            }
+            
+            console.log('🔍 Device detected:', deviceType);
+            console.log('📱 User Agent:', navigator.userAgent);
+            console.log('📐 Screen:', window.screen.width, 'x', window.screen.height);
+            console.log('✅ data-device-type attribute set to:', deviceType);
+            
+            // Re-apply on orientation change
+            window.addEventListener('orientationchange', function() {
+                setTimeout(function() {
+                    document.documentElement.setAttribute('data-device-type', deviceType);
+                    if (document.body) {
+                        document.body.classList.add('device-' + deviceType);
+                    }
+                    console.log('🔄 Orientation changed, device type reapplied:', deviceType);
+                }, 100);
+            });
+            
+            // Also listen to resize events
+            window.addEventListener('resize', function() {
+                document.documentElement.setAttribute('data-device-type', deviceType);
+                if (document.body) {
+                    document.body.classList.add('device-' + deviceType);
+                }
+            });
+        })();
+    </script>
     <!-- Cache busting -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -259,22 +326,103 @@
         async function renderMathJaxInElement(element) {
             if (!element) return;
             
+            // Pause observer during rendering
+            pauseObserver();
+            
             try {
-                if (window.MathJax && window.MathJax.typesetPromise) {
+                // Wait for MathJax to be ready
+                if (!window.MathJax) {
+                    console.warn('⚠️ MathJax not loaded yet, queuing for later');
+                    // Queue for later when MathJax is ready
+                    if (document.readyState === 'complete') {
+                        setTimeout(() => renderMathJaxInElement(element), 500);
+                    }
+                    resumeObserver();
+                    return;
+                }
+                
+                // Wait for startup if needed
+                if (window.MathJax.startup && window.MathJax.startup.promise) {
+                    await window.MathJax.startup.promise;
+                }
+                
+                if (window.MathJax.typesetPromise) {
+                    // Clear existing rendered math in this element
+                    const existingMath = element.querySelectorAll('mjx-container, MJX-CONTAINER');
+                    existingMath.forEach(mjx => {
+                        try {
+                            const script = mjx.previousElementSibling;
+                            if (script && script.tagName === 'SCRIPT' && script.type.includes('math/tex')) {
+                                mjx.remove();
+                            }
+                        } catch (e) {
+                            // Ignore
+                        }
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, 10));
                     await window.MathJax.typesetPromise([element]);
                     console.log('✅ MathJax rendered in element');
                 } else {
-                    console.warn('⚠️ MathJax not available');
+                    console.warn('⚠️ MathJax typesetPromise not available');
                 }
             } catch (error) {
                 console.error('❌ Error rendering MathJax:', error);
+                // Retry once
+                setTimeout(async () => {
+                    try {
+                        if (window.MathJax && window.MathJax.typesetPromise) {
+                            await window.MathJax.typesetPromise([element]);
+                            console.log('✅ MathJax rendered in element on retry');
+                        }
+                    } catch (retryError) {
+                        console.error('❌ MathJax element retry failed:', retryError);
+                    } finally {
+                        resumeObserver();
+                    }
+                }, 500);
+                return; // Don't resume yet, let retry handle it
+            } finally {
+                // Resume observer after rendering
+                setTimeout(() => resumeObserver(), 50);
             }
         }
 
         // Global function to render MathJax on the entire page or specific container
         async function renderAllMathJax(container) {
+            // Pause observer during rendering
+            pauseObserver();
+            
             try {
-                if (window.MathJax && window.MathJax.typesetPromise) {
+                // Wait for MathJax to be ready
+                if (!window.MathJax) {
+                    console.warn('⚠️ MathJax not loaded yet');
+                    return;
+                }
+                
+                // Wait for startup if needed
+                if (window.MathJax.startup && window.MathJax.startup.promise) {
+                    await window.MathJax.startup.promise;
+                }
+                
+                if (window.MathJax.typesetPromise) {
+                    // Clear existing rendered math to prevent conflicts
+                    const target = container || document.body;
+                    const existingMath = target.querySelectorAll('mjx-container, MJX-CONTAINER');
+                    existingMath.forEach(mjx => {
+                        try {
+                            const script = mjx.previousElementSibling;
+                            if (script && script.tagName === 'SCRIPT' && script.type.includes('math/tex')) {
+                                mjx.remove();
+                            }
+                        } catch (e) {
+                            // Ignore
+                        }
+                    });
+                    
+                    // Wait for DOM to stabilize
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    
                     if (container) {
                         await window.MathJax.typesetPromise([container]);
                         console.log('✅ MathJax rendered in container');
@@ -283,16 +431,136 @@
                         console.log('✅ MathJax rendered on entire page');
                     }
                 } else {
-                    console.warn('⚠️ MathJax not available');
+                    console.warn('⚠️ MathJax typesetPromise not available');
                 }
             } catch (error) {
                 console.error('❌ Error rendering MathJax:', error);
+                // Retry once after a delay
+                setTimeout(async () => {
+                    try {
+                        if (window.MathJax && window.MathJax.typesetPromise) {
+                            if (container) {
+                                await window.MathJax.typesetPromise([container]);
+                            } else {
+                                await window.MathJax.typesetPromise();
+                            }
+                            console.log('✅ MathJax rendered on retry');
+                        }
+                    } catch (retryError) {
+                        console.error('❌ MathJax retry failed:', retryError);
+                    } finally {
+                        resumeObserver();
+                    }
+                }, 500);
+                return; // Don't resume observer yet, let retry handle it
+            } finally {
+                // Resume observer after rendering
+                setTimeout(() => resumeObserver(), 50);
             }
         }
 
         // Observer to automatically render MathJax when content changes
         let mathJaxRenderTimeout = null;
-        let isMathJaxRendering = false;
+        let mathJaxRenderQueue = [];
+        let isProcessingQueue = false;
+        
+        // Process queued render requests
+        async function processMathJaxQueue() {
+            if (isProcessingQueue || mathJaxRenderQueue.length === 0) {
+                return;
+            }
+            
+            isProcessingQueue = true;
+            
+            // Pause observer to prevent conflicts during rendering
+            pauseObserver();
+            
+            try {
+                // Get all unique elements to render, filter out invalid ones
+                const elementsToRender = [...new Set(mathJaxRenderQueue)].filter(el => {
+                    // Check if element is still in DOM and valid
+                    return el && el.isConnected && document.body.contains(el);
+                });
+                mathJaxRenderQueue = [];
+                
+                if (elementsToRender.length === 0) {
+                    console.log('⚠️ No valid elements to render');
+                    return;
+                }
+                
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    console.log('🔄 Rendering MathJax for', elementsToRender.length, 'elements');
+                    
+                    // Clear any existing MathJax containers in these elements first
+                    elementsToRender.forEach(el => {
+                        try {
+                            const existingMath = el.querySelectorAll('mjx-container, MJX-CONTAINER');
+                            existingMath.forEach(mjx => {
+                                // Store the original text if available
+                                const script = mjx.previousElementSibling;
+                                if (script && script.tagName === 'SCRIPT' && script.type.includes('math/tex')) {
+                                    // Keep the script tag, remove only the rendered output
+                                    mjx.remove();
+                                }
+                            });
+                        } catch (e) {
+                            // Ignore errors during cleanup
+                        }
+                    });
+                    
+                    // Wait a tick for DOM to stabilize
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    
+                    // Render with error handling per element
+                    await window.MathJax.typesetPromise(elementsToRender);
+                    console.log('✅ MathJax rendered successfully');
+                }
+            } catch (error) {
+                console.error('❌ Error rendering MathJax:', error);
+                
+                // If it's a DOM mutation error, try rendering the whole document instead
+                if (error.name === 'IndexSizeError' || error.message.includes('splitText')) {
+                    console.log('🔄 Retrying with full document render...');
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        if (window.MathJax && window.MathJax.typesetPromise) {
+                            await window.MathJax.typesetPromise();
+                            console.log('✅ Full document render successful');
+                        }
+                    } catch (retryError) {
+                        console.error('❌ Retry failed:', retryError);
+                    }
+                }
+            } finally {
+                isProcessingQueue = false;
+                
+                // Resume observer after a short delay
+                setTimeout(() => resumeObserver(), 50);
+                
+                // Process any new items that were added while we were rendering
+                if (mathJaxRenderQueue.length > 0) {
+                    setTimeout(() => processMathJaxQueue(), 150);
+                }
+            }
+        }
+        
+        // Queue an element for MathJax rendering
+        function queueMathJaxRender(element) {
+            if (!element || !element.isConnected) return;
+            
+            // Don't queue if already in queue
+            if (mathJaxRenderQueue.includes(element)) return;
+            
+            mathJaxRenderQueue.push(element);
+            
+            // Debounce processing - increased to 150ms for better stability
+            clearTimeout(mathJaxRenderTimeout);
+            mathJaxRenderTimeout = setTimeout(() => {
+                processMathJaxQueue();
+            }, 150);
+        }
+        
+        let mathJaxObserver = null;
         
         function setupMathJaxObserver() {
             if (!window.MathJax) {
@@ -300,13 +568,9 @@
                 return;
             }
 
-            const observer = new MutationObserver((mutations) => {
-                // Skip if MathJax is already rendering
-                if (isMathJaxRendering) {
-                    return;
-                }
-                
-                let shouldRender = false;
+            mathJaxObserver = new MutationObserver((mutations) => {
+                // Batch process mutations to avoid excessive renders
+                const nodesToCheck = new Set();
                 
                 mutations.forEach((mutation) => {
                     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
@@ -315,40 +579,57 @@
                                 // Skip MathJax's own elements
                                 if (node.classList && (node.classList.contains('MathJax') || 
                                     node.tagName === 'mjx-container' || 
-                                    node.closest('.MathJax, mjx-container'))) {
+                                    node.tagName === 'MJX-CONTAINER' ||
+                                    node.closest && node.closest('.MathJax, mjx-container, MJX-CONTAINER'))) {
                                     return;
                                 }
                                 
                                 // Check if the added content contains LaTeX delimiters
                                 const text = node.textContent || '';
                                 if (text.includes('$') || text.includes('\\(') || text.includes('\\[')) {
-                                    shouldRender = true;
+                                    nodesToCheck.add(node);
                                 }
                             }
                         });
                     }
                 });
-
-                if (shouldRender) {
-                    // Debounce rendering to avoid multiple rapid calls
-                    clearTimeout(mathJaxRenderTimeout);
-                    mathJaxRenderTimeout = setTimeout(() => {
-                        console.log('🔄 Content with LaTeX detected, rendering MathJax...');
-                        isMathJaxRendering = true;
-                        renderAllMathJax().finally(() => {
-                            isMathJaxRendering = false;
-                        });
-                    }, 100);
+                
+                // Queue all nodes at once
+                if (nodesToCheck.size > 0) {
+                    console.log('📝 LaTeX content detected in', nodesToCheck.size, 'nodes');
+                    nodesToCheck.forEach(node => queueMathJaxRender(node));
                 }
             });
 
             // Observe the entire document body for changes
-            observer.observe(document.body, {
+            mathJaxObserver.observe(document.body, {
                 childList: true,
                 subtree: true
             });
 
             console.log('✅ MathJax observer set up');
+            
+            // Render any existing content on page
+            setTimeout(() => {
+                console.log('🔄 Initial MathJax render');
+                renderAllMathJax();
+            }, 200);
+        }
+        
+        // Temporarily pause observer during rendering to prevent conflicts
+        function pauseObserver() {
+            if (mathJaxObserver) {
+                mathJaxObserver.disconnect();
+            }
+        }
+        
+        function resumeObserver() {
+            if (mathJaxObserver) {
+                mathJaxObserver.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            }
         }
 
         // Initialize MathJax observer when page loads
@@ -357,14 +638,91 @@
                 window.MathJax.startup.promise.then(() => {
                     console.log('✅ MathJax ready, setting up observer');
                     setupMathJaxObserver();
+                }).catch(error => {
+                    console.error('❌ MathJax startup error:', error);
+                    // Try again after delay
+                    setTimeout(() => setupMathJaxObserver(), 1000);
                 });
             } else {
                 // Fallback: try to set up observer after a delay
                 setTimeout(() => {
-                    setupMathJaxObserver();
+                    if (window.MathJax) {
+                        setupMathJaxObserver();
+                    } else {
+                        console.error('❌ MathJax failed to load');
+                    }
                 }, 2000);
             }
         });
+        
+        // Global utility: Force render LaTeX in any element or entire page
+        // Usage: window.forceRenderLatex() or window.forceRenderLatex(element)
+        window.forceRenderLatex = async function(element) {
+            console.log('🔄 Force rendering LaTeX...');
+            
+            // Pause observer to prevent conflicts
+            pauseObserver();
+            
+            try {
+                if (!window.MathJax) {
+                    console.error('❌ MathJax not loaded');
+                    return false;
+                }
+                
+                // Wait for MathJax to be ready
+                if (window.MathJax.startup && window.MathJax.startup.promise) {
+                    await window.MathJax.startup.promise;
+                }
+                
+                // Clear any existing MathJax output in the target
+                const target = element || document.body;
+                const mjxContainers = target.querySelectorAll('mjx-container, MJX-CONTAINER');
+                mjxContainers.forEach(container => {
+                    try {
+                        container.remove();
+                    } catch (e) {
+                        // Ignore removal errors
+                    }
+                });
+                
+                // Wait for DOM to stabilize after removal
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
+                // Render
+                if (window.MathJax.typesetPromise) {
+                    if (element) {
+                        await window.MathJax.typesetPromise([element]);
+                    } else {
+                        await window.MathJax.typesetPromise();
+                    }
+                    console.log('✅ Force render complete');
+                    return true;
+                } else {
+                    console.error('❌ MathJax typesetPromise not available');
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Force render error:', error);
+                
+                // Try one more time with a clean slate
+                try {
+                    console.log('🔄 Attempting recovery render...');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (window.MathJax && window.MathJax.typesetPromise) {
+                        await window.MathJax.typesetPromise();
+                        console.log('✅ Recovery render successful');
+                        return true;
+                    }
+                } catch (recoveryError) {
+                    console.error('❌ Recovery render failed:', recoveryError);
+                }
+                
+                return false;
+            } finally {
+                // Resume observer after a delay
+                setTimeout(() => resumeObserver(), 100);
+            }
+        };
 
         // BLAZING FAST PDF with pdfmake (Native PDF, No Canvas!)
         async function generateFastPDF(questions, config, type = 'questions') {
@@ -925,6 +1283,621 @@
             word-wrap: break-word;
         }
 
+        /* MOBILE LAYOUT - Works on real devices AND Chrome DevTools emulator */
+        /* Targets screens under 926px width (mobile size) */
+        @media (max-width: 926px) {
+            /* Force single column for ALL grids */
+            .stats-overview,
+            .stats-row,
+            .action-cards-grid,
+            .subject-grid,
+            #paperSubjectCards,
+            .question-type-cards,
+            .academic-grid {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            /* Question Bank Cards - Fix text breaking into single characters */
+            .question-bank-item,
+            .question-card,
+            .question-select-item {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                padding: 0.75rem !important;
+                margin-bottom: 0.75rem !important;
+            }
+            
+            .question-text,
+            .question-title,
+            .question-content,
+            .question-select-item p,
+            .question-select-item > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
+                white-space: normal !important;
+                hyphens: none !important;
+                flex: 1 !important;
+                padding: 0 !important;
+                margin: 0.25rem 0 !important;
+            }
+            
+            .question-meta,
+            .question-info {
+                width: 100% !important;
+                flex-wrap: wrap !important;
+                gap: 0.5rem !important;
+                padding: 0.5rem 0 !important;
+            }
+            
+            /* Reduce spacing in question cards */
+            .question-card .option-item,
+            .question-select-item .option-item {
+                padding: 0.5rem !important;
+                margin: 0.25rem 0 !important;
+            }
+            
+            /* Compact buttons in question cards */
+            .question-card .btn,
+            .question-select-item .btn {
+                padding: 0.5rem 1rem !important;
+                font-size: 0.85rem !important;
+            }
+            
+            /* Reduce tag/badge spacing */
+            .question-card .badge,
+            .question-card .tag,
+            .question-meta span {
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.75rem !important;
+                margin: 0.125rem !important;
+            }
+            
+            /* Compact reference section */
+            .question-card .references,
+            .question-card .reference-section {
+                padding: 0.5rem !important;
+                margin: 0.5rem 0 !important;
+            }
+            
+            /* FORCE ALL dropdowns EXTRA small on mobile */
+            select,
+            select[style],
+            #paperDifficultyFilter,
+            #paperChapterFilter {
+                padding: 0.25rem 0.35rem !important;
+                font-size: 0.7rem !important;
+                height: 32px !important;
+                min-height: 32px !important;
+                max-height: 32px !important;
+                line-height: 1.1 !important;
+                border-width: 1px !important;
+                border-radius: 4px !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+            }
+            
+            /* FORCE dropdown options to be tiny */
+            select option,
+            #paperDifficultyFilter option,
+            #paperChapterFilter option {
+                padding: 0.25rem !important;
+                font-size: 0.7rem !important;
+                line-height: 1.2 !important;
+                height: auto !important;
+                min-height: 28px !important;
+            }
+            
+            /* Override inline styles on select */
+            select[style*="padding"] {
+                padding: 0.25rem 0.35rem !important;
+            }
+            
+            select[style*="font-size"] {
+                font-size: 0.7rem !important;
+            }
+            
+            /* Make the native dropdown menu smaller */
+            @supports (-webkit-appearance: none) or (-moz-appearance: none) {
+                select {
+                    -webkit-appearance: none;
+                    -moz-appearance: none;
+                    appearance: none;
+                }
+            }
+            
+            /* ALL labels much smaller */
+            label {
+                font-size: 0.7rem !important;
+                margin-bottom: 0.2rem !important;
+                display: block !important;
+            }
+            
+            /* Filter bar very compact */
+            div[style*="padding: 1.5rem"] {
+                padding: 0.6rem !important;
+            }
+            
+            /* Filter grid single column */
+            div[style*="grid-template-columns"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 0.6rem !important;
+            }
+            
+            /* Reset button smaller */
+            button[onclick*="resetPaperFilters"],
+            button[onclick*="reset"] {
+                padding: 0.4rem 0.8rem !important;
+                font-size: 0.75rem !important;
+                height: 34px !important;
+                font-size: 0.85rem !important;
+            }
+            
+            /* Make ALL select dropdowns smaller on mobile */
+            select {
+                font-size: 0.75rem !important;
+                padding: 0.4rem 0.5rem !important;
+                line-height: 1.1 !important;
+                max-width: 100% !important;
+            }
+            
+            /* Make dropdown options smaller and more compact */
+            select option {
+                font-size: 0.75rem !important;
+                padding: 0.3rem 0.4rem !important;
+                line-height: 1.2 !important;
+                min-height: 28px !important;
+                height: 28px !important;
+            }
+            
+            /* Reduce select height */
+            select:not([multiple]) {
+                height: 34px !important;
+                min-height: 34px !important;
+                max-height: 34px !important;
+            }
+            
+            /* Make the dropdown popup smaller */
+            select[size] {
+                max-height: 200px !important;
+            }
+            
+            /* Compact select appearance */
+            select {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 0.5rem center;
+                background-size: 10px;
+                padding-right: 2rem !important;
+            }
+            
+            .dashboard {
+                padding: 0 !important;
+            }
+            
+            .main-content {
+                width: 100vw !important;
+                max-width: 100vw !important;
+            }
+            
+            .content-area,
+            .content-area-full {
+                width: 100% !important;
+                max-width: 100vw !important;
+                padding: 0.5rem !important;
+            }
+        }
+        
+        /* LANDSCAPE MODE - For mobile-sized screens in landscape */
+        @media (max-width: 926px) and (orientation: landscape) {
+            body {
+                overflow-x: hidden;
+                max-width: 100vw;
+                height: 100vh;
+            }
+            
+            /* KEEP single column even in landscape */
+            .stats-overview,
+            .stats-row,
+            .action-cards-grid,
+            .subject-grid,
+            #paperSubjectCards,
+            .question-type-cards,
+            .academic-grid {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .section {
+                min-height: 100vh !important;
+                overflow-y: auto !important;
+                padding: 0.5rem 1rem !important;
+            }
+            
+            /* AI Section in landscape */
+            #ultraAiGuidanceSection {
+                height: 100vh !important;
+                padding: 0 !important;
+            }
+            
+            .chatgpt-container {
+                height: 100vh !important;
+                flex-direction: column !important;
+            }
+            
+            .chatgpt-sidebar {
+                width: 100% !important;
+                max-height: 0 !important;
+                overflow: hidden !important;
+            }
+            
+            .chatgpt-main {
+                flex: 1 !important;
+                height: 100% !important;
+            }
+        }
+        
+        /* DESKTOP PROTECTION - Ensure desktop keeps multi-column layout */
+        @media (min-width: 927px) {
+            .stats-overview,
+            .stats-row {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)) !important;
+            }
+            
+            .action-cards-grid {
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+            }
+            
+            .documents-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1.5rem;
+            }
+        }
+        
+        /* DOCUMENTS SECTION - Mobile Friendly */
+        .documents-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        
+        /* Document Viewer - Mobile Friendly */
+        .document-viewer-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .document-viewer-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .document-viewer-header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .doc-back-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+            white-space: nowrap;
+        }
+        
+        .document-title-section {
+            min-width: 0;
+            flex: 1;
+        }
+        
+        .document-title {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1f2937;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .document-subtitle {
+            margin: 0.25rem 0 0 0;
+            color: #6b7280;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .document-viewer-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+        
+        .doc-download-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(16,185,129,0.4);
+        }
+        
+        .doc-fullscreen-btn {
+            background: rgba(102,126,234,0.1);
+            border: 2px solid rgba(102,126,234,0.3);
+            color: #667eea;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s;
+        }
+        
+        .pdf-viewer-container {
+            flex: 1;
+            position: relative;
+            padding: 1rem;
+            overflow: hidden;
+        }
+        
+        .document-loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            background: rgba(255,255,255,0.98);
+            backdrop-filter: blur(20px);
+            padding: 2rem;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(102,126,234,0.2);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        .loading-title {
+            color: #1f2937;
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        .loading-subtitle {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+        
+        .pdf-iframe-wrapper {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.5);
+        }
+        
+        /* ADMIN PANEL - Mobile Friendly */
+        @media (max-width: 926px) {
+            .admin-dashboard {
+                padding: 0.5rem;
+            }
+            
+            .admin-tabs {
+                flex-direction: column;
+                gap: 0.5rem;
+                padding: 0.5rem;
+            }
+            
+            .admin-tab {
+                padding: 0.75rem 1rem;
+                font-size: 0.9rem;
+                white-space: nowrap;
+                justify-content: flex-start;
+            }
+            
+            .admin-tab i {
+                font-size: 1.1rem;
+            }
+            
+            .admin-section-header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 1rem;
+            }
+            
+            .admin-section-header h2 {
+                font-size: 1.3rem;
+            }
+            
+            /* Button container in admin section header */
+            .admin-section-header > div {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 0.75rem !important;
+                width: 100% !important;
+            }
+            
+            .admin-section-header .btn {
+                width: 100% !important;
+                justify-content: center !important;
+                padding: 0.875rem 1.5rem !important;
+                font-size: 0.95rem !important;
+            }
+            
+            .admin-stats {
+                grid-template-columns: 1fr !important;
+                gap: 1rem;
+            }
+            
+            .stat-card {
+                padding: 1rem;
+            }
+            
+            .stat-icon {
+                width: 45px;
+                height: 45px;
+                font-size: 1rem;
+            }
+            
+            .stat-info h3 {
+                font-size: 0.8rem;
+            }
+            
+            .stat-number {
+                font-size: 1.5rem;
+            }
+            
+            /* Make tables scrollable on mobile */
+            .users-table {
+                overflow-x: auto;
+            }
+            
+            .users-table table {
+                min-width: 600px;
+            }
+            
+            .users-table th,
+            .users-table td {
+                padding: 0.75rem 0.5rem;
+                font-size: 0.85rem;
+            }
+            
+            .documents-grid {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .document-viewer-header {
+                padding: 0.5rem;
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .document-viewer-header-left {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.5rem;
+            }
+            
+            .doc-back-btn {
+                padding: 0.6rem 0.8rem;
+                font-size: 0.9rem;
+                justify-content: center;
+            }
+            
+            .back-text {
+                display: inline;
+            }
+            
+            .document-title {
+                font-size: 0.95rem;
+                white-space: normal;
+                word-break: break-word;
+            }
+            
+            .document-subtitle {
+                font-size: 0.7rem;
+            }
+            
+            .document-viewer-actions {
+                width: 100%;
+                justify-content: stretch;
+            }
+            
+            .doc-download-btn,
+            .doc-fullscreen-btn {
+                flex: 1;
+                padding: 0.6rem 0.8rem;
+                font-size: 0.85rem;
+                justify-content: center;
+            }
+            
+            .btn-text {
+                display: none;
+            }
+            
+            .pdf-viewer-container {
+                padding: 0.5rem;
+            }
+            
+            .document-loading {
+                padding: 1.5rem;
+                max-width: 90%;
+            }
+            
+            .loading-spinner {
+                width: 50px;
+                height: 50px;
+            }
+            
+            .loading-title {
+                font-size: 1rem;
+            }
+            
+            .loading-subtitle {
+                font-size: 0.75rem;
+            }
+        }
+        
         /* Responsive layout fixes */
         @media (max-width: 768px) {
             body {
@@ -1905,6 +2878,344 @@
 
         /* Responsive design */
         @media (max-width: 768px) {
+            /* Prevent horizontal scroll on mobile */
+            body {
+                overflow-x: hidden;
+                max-width: 100vw;
+            }
+            
+            /* NUCLEAR OPTION: Hide ALL sections by default on mobile */
+            section.section,
+            .section,
+            [class*="section"] {
+                display: none !important;
+                width: 100%;
+                max-width: 100vw;
+                overflow-x: hidden;
+                padding: 1rem;
+            }
+            
+            /* Only show dashboard section when it has display style */
+            #dashboardSection {
+                display: none !important;
+            }
+            
+            #dashboardSection[style*="display: block"],
+            #dashboardSection[style*="display: flex"] {
+                display: block !important;
+            }
+            
+            /* Show any section that has explicit display style */
+            section[style*="display: block"],
+            section[style*="display: flex"],
+            .section[style*="display: block"],
+            .section[style*="display: flex"] {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                position: relative !important;
+                left: auto !important;
+            }
+            
+            /* Specific sections that should show when active */
+            #makePaperSection[style*="display: block"],
+            #makePaperSection[style*="display: flex"],
+            #questionBankSection[style*="display: block"],
+            #questionBankSection[style*="display: flex"],
+            #ultraAiGuidanceSection[style*="display: block"],
+            #ultraAiGuidanceSection[style*="display: flex"] {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            
+            /* Hide all admin tabs on mobile */
+            .admin-tab-content {
+                display: none !important;
+            }
+            
+            .admin-tab-content.active {
+                display: block !important;
+            }
+            
+            /* HARD FIX: Hide Documents tab content on mobile by default */
+            #documents-tab {
+                display: none !important;
+            }
+            
+            /* Only show documents tab when it's explicitly active */
+            #documents-tab.active {
+                display: block !important;
+            }
+            
+            .dashboard-scroll-container {
+                width: 100%;
+                max-width: 100vw;
+                overflow-x: hidden;
+            }
+            
+            /* Hide any floating or absolute positioned sections */
+            .section:not([style*="display: block"]):not([style*="display: flex"]) {
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                position: absolute !important;
+                left: -9999px !important;
+            }
+            
+            /* AI SECTION MOBILE FIX */
+            #ultraAiGuidanceSection {
+                height: 100vh !important;
+                overflow: hidden !important;
+                padding: 0 !important;
+            }
+            
+            .chatgpt-container {
+                display: flex !important;
+                flex-direction: column !important;
+                height: 100vh !important;
+                width: 100vw !important;
+                max-width: 100vw !important;
+                overflow: hidden !important;
+            }
+            
+            .chatgpt-sidebar {
+                width: 100% !important;
+                height: auto !important;
+                max-height: 0 !important;
+                overflow: hidden !important;
+                border-right: none !important;
+                border-bottom: 1px solid #e5e5e5 !important;
+                transition: max-height 0.3s ease !important;
+                flex-shrink: 0 !important;
+            }
+            
+            .chatgpt-sidebar.mobile-open {
+                max-height: 80vh !important;
+                overflow-y: auto !important;
+            }
+            
+            .chatgpt-main {
+                flex: 1 !important;
+                width: 100% !important;
+                max-width: 100vw !important;
+                min-height: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+            }
+            
+            .messages-container {
+                flex: 1 !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                -webkit-overflow-scrolling: touch !important;
+                padding: 1rem !important;
+                width: 100% !important;
+                max-width: 100vw !important;
+                min-height: 0 !important;
+            }
+            
+            .input-area {
+                width: 100% !important;
+                max-width: 100vw !important;
+                padding: 1rem !important;
+                background: white !important;
+                border-top: 1px solid #e5e5e5 !important;
+                flex-shrink: 0 !important;
+            }
+            
+            .input-container {
+                width: 100% !important;
+                max-width: 100vw !important;
+            }
+            
+            .input-wrapper {
+                width: 100% !important;
+            }
+            
+            .input-wrapper textarea {
+                width: 100% !important;
+                max-width: 100% !important;
+                font-size: 16px !important; /* Prevent zoom on iOS */
+            }
+            
+            .welcome-screen {
+                padding: 1rem !important;
+            }
+            
+            .examples-section {
+                grid-template-columns: 1fr !important;
+            }
+            
+            .example-category {
+                margin-bottom: 1.5rem !important;
+            }
+            
+            /* Mobile menu toggle button for AI sidebar */
+            .mobile-menu-toggle {
+                display: block !important;
+                position: fixed !important;
+                top: 1rem !important;
+                left: 1rem !important;
+                z-index: 1000 !important;
+                background: white !important;
+                border: 1px solid #e5e5e5 !important;
+                border-radius: 8px !important;
+                padding: 0.5rem !important;
+                cursor: pointer !important;
+            }
+            
+            /* FIX ALL MODALS ON MOBILE */
+            .modal {
+                padding: 0.5rem !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            
+            .modal-content {
+                width: 95vw !important;
+                max-width: 95vw !important;
+                max-height: 90vh !important;
+                margin: 0 !important;
+                overflow-y: auto !important;
+            }
+            
+            .modal-header {
+                padding: 1rem !important;
+                flex-wrap: wrap !important;
+            }
+            
+            .modal-title {
+                font-size: 1.25rem !important;
+                word-break: break-word !important;
+            }
+            
+            .modal-body {
+                padding: 1rem !important;
+                max-height: calc(90vh - 150px) !important;
+                overflow-y: auto !important;
+            }
+            
+            .modal-footer {
+                padding: 1rem !important;
+                flex-direction: column !important;
+                gap: 0.5rem !important;
+            }
+            
+            .modal-footer .btn {
+                width: 100% !important;
+            }
+            
+            /* Fix buttons in modals */
+            .modal .btn {
+                padding: 0.75rem 1rem !important;
+                font-size: 0.95rem !important;
+                white-space: normal !important;
+                word-break: break-word !important;
+            }
+            
+            /* MAKE PAPER SECTION MOBILE FIX */
+            #makePaperSection {
+                padding: 1rem !important;
+                overflow-y: auto !important;
+                height: auto !important;
+                min-height: 100vh !important;
+            }
+            
+            #makePaperSection .section-header {
+                padding: 1rem !important;
+                margin-bottom: 1rem !important;
+            }
+            
+            #makePaperSection .exam-type-tab {
+                min-width: 150px !important;
+                padding: 0.75rem 1rem !important;
+                flex-direction: row !important;
+                align-items: center !important;
+            }
+            
+            #makePaperSection .exam-type-tab > div:first-child {
+                flex-shrink: 0 !important;
+            }
+            
+            #makePaperSection .exam-type-tab > div:last-child {
+                flex: 1 !important;
+                min-width: 0 !important;
+            }
+            
+            #makePaperSection .exam-type-tab div[style*="font-size: 1.25rem"] {
+                white-space: nowrap !important;
+                overflow: visible !important;
+            }
+            
+            #makePaperSection .exam-type-tab div[style*="font-size: 0.85rem"] {
+                white-space: nowrap !important;
+                overflow: visible !important;
+            }
+            
+            #paperSubjectCards {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .subject-card {
+                padding: 1.5rem !important;
+                min-height: auto !important;
+            }
+            
+            .subject-card > div {
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 1rem !important;
+            }
+            
+            .subject-card div[style*="font-size: 1.5rem"] {
+                font-size: 1.25rem !important;
+                white-space: normal !important;
+                word-break: normal !important;
+                overflow-wrap: normal !important;
+            }
+            
+            /* Fix exam type tabs text */
+            .exam-type-tab {
+                white-space: normal !important;
+            }
+            
+            .exam-type-tab > div > div {
+                white-space: normal !important;
+                word-break: normal !important;
+            }
+            
+            #paperQuestionsList {
+                width: 100% !important;
+                max-width: 100vw !important;
+            }
+            
+            /* Question cards in make paper */
+            .question-card,
+            .paper-question-card {
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 1rem !important;
+                margin-bottom: 1rem !important;
+            }
+            
+            /* Filter bar in make paper */
+            #makePaperSection .filter-bar,
+            #makePaperSection > div > div {
+                width: 100% !important;
+                max-width: 100vw !important;
+                padding: 0.75rem !important;
+            }
+            
+            /* Selection summary */
+            #makePaperSection .selection-summary {
+                flex-direction: column !important;
+                gap: 0.75rem !important;
+            }
+            
             .keyboard-shortcuts-help {
                 bottom: 80px;
                 right: 10px;
@@ -2160,6 +3471,8 @@
             position: sticky;
             top: 0;
             z-index: 100;
+            gap: 1rem;
+            flex-wrap: nowrap;
         }
 
         .header-logo {
@@ -2169,6 +3482,7 @@
             font-size: 1.5rem;
             font-weight: 700;
             color: var(--primary);
+            flex-shrink: 0;
         }
 
         .header-logo i {
@@ -2178,6 +3492,14 @@
         .header-nav {
             display: flex;
             gap: 0.5rem;
+            flex: 1;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+        }
+        
+        .header-nav::-webkit-scrollbar {
+            display: none;
         }
 
         .nav-btn {
@@ -2211,6 +3533,8 @@
             display: flex;
             align-items: center;
             gap: 1rem;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .user-avatar {
@@ -6856,22 +8180,6 @@
 
         /* Responsive Enhancements */
         @media (max-width: 768px) {
-            .header {
-                padding: 1rem;
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .header-nav {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-
-            .nav-btn {
-                padding: 0.5rem 1rem;
-                font-size: 0.9rem;
-            }
-
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
                 gap: 1rem;
@@ -6902,15 +8210,6 @@
         @media (max-width: 480px) {
             .stats-grid {
                 grid-template-columns: 1fr;
-            }
-
-            .nav-btn {
-                padding: 0.5rem 0.75rem;
-                font-size: 0.8rem;
-            }
-
-            .nav-btn span {
-                display: none;
             }
 
             .auth-card {
@@ -14442,24 +15741,6 @@
         }
 
         @media (max-width: 768px) {
-            .header-nav {
-                gap: var(--space-sm);
-            }
-
-            .nav-btn {
-                padding: 6px 8px;
-                font-size: 0.8rem;
-                min-width: auto;
-            }
-
-            /* Hide text on mobile, show only icons */
-            .nav-btn {
-                font-size: 0;
-            }
-
-            .nav-btn i {
-                font-size: 1rem;
-            }
 
 
 
@@ -16587,6 +17868,34 @@
 
         /* Responsive Design for Auth */
         @media (max-width: 768px) {
+            /* Ensure only one section shows at a time on mobile */
+            .auth-container:not(.hidden) {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 9999;
+                width: 100vw;
+                height: 100vh;
+                overflow-y: auto;
+            }
+            
+            .auth-container.hidden {
+                display: none !important;
+            }
+            
+            .dashboard:not(.hidden) {
+                display: flex !important;
+                flex-direction: column;
+                width: 100%;
+                min-height: 100vh;
+            }
+            
+            .dashboard.hidden {
+                display: none !important;
+            }
+            
             .auth-container {
                 padding: 1rem;
                 align-items: center;
@@ -17196,6 +18505,10 @@
             
             .main-content {
                 background: transparent !important;
+                flex-direction: column;
+                width: 100%;
+                max-width: 100vw;
+                overflow-x: hidden;
             }
             
             .content-area-full {
@@ -18728,6 +20041,31 @@
             </div>
 
             <div class="user-info">
+                <!-- Download App Button with Dropdown -->
+                <div class="download-app-dropdown" style="position: relative; margin-right: 1rem;">
+                    <button class="btn btn-primary" id="downloadAppBtn" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-download"></i>
+                        Download App
+                        <i class="fas fa-chevron-down" style="font-size: 0.8rem;"></i>
+                    </button>
+                    <div class="download-dropdown-menu" id="downloadDropdown" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 0.5rem; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); min-width: 200px; z-index: 1000; overflow: hidden;">
+                        <a href="/downloads/EduSphere-PC.exe" download class="download-option" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; text-decoration: none; color: var(--gray-700); transition: all 0.2s ease; border-bottom: 1px solid var(--gray-200);">
+                            <i class="fas fa-desktop" style="font-size: 1.5rem; color: #3b82f6;"></i>
+                            <div>
+                                <div style="font-weight: 600;">PC Version</div>
+                                <div style="font-size: 0.8rem; color: var(--gray-500);">Windows Desktop</div>
+                            </div>
+                        </a>
+                        <a href="/downloads/EduSphere.apk" download class="download-option" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; text-decoration: none; color: var(--gray-700); transition: all 0.2s ease;">
+                            <i class="fas fa-mobile-alt" style="font-size: 1.5rem; color: #10b981;"></i>
+                            <div>
+                                <div style="font-weight: 600;">Android App</div>
+                                <div style="font-size: 0.8rem; color: var(--gray-500);">APK File</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                
                 <div class="user-avatar" id="userAvatar">U</div>
                 <div>
                     <div id="userName">User</div>
@@ -19915,7 +21253,7 @@
                         </div>
 
                         <!-- Documents Grid (Button Style like Question Bank) -->
-                        <div id="documentsGrid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
+                        <div id="documentsGrid" class="documents-grid">
                             <!-- Documents will be loaded here -->
                             <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #94a3b8;">
                                 <i class="fas fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 1rem;"></i>
@@ -19926,42 +21264,42 @@
 
                     <!-- Beautiful Document Viewer -->
                     <section class="section" id="documentViewerPage" style="display: none;">
-                        <div style="height: 100vh; display: flex; flex-direction: column; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <div class="document-viewer-container">
                             <!-- Beautiful Header with Glassmorphism -->
-                            <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.3); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                                <div style="display: flex; align-items: center; gap: 1.5rem;">
-                                    <button onclick="closeDocumentViewerPage()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; color: white; padding: 0.75rem 1.25rem; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-weight: 600; transition: all 0.3s; box-shadow: 0 4px 12px rgba(102,126,234,0.4);">
+                            <div class="document-viewer-header">
+                                <div class="document-viewer-header-left">
+                                    <button onclick="closeDocumentViewerPage()" class="doc-back-btn">
                                         <i class="fas fa-arrow-left"></i>
-                                        Back
+                                        <span class="back-text">Back</span>
                                     </button>
-                                    <div>
-                                        <h2 id="documentViewerPageTitle" style="margin: 0; font-size: 1.3rem; font-weight: 700; color: #1f2937; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></h2>
-                                        <p id="documentViewerPageSubtitle" style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.85rem; font-weight: 500;"></p>
+                                    <div class="document-title-section">
+                                        <h2 id="documentViewerPageTitle" class="document-title"></h2>
+                                        <p id="documentViewerPageSubtitle" class="document-subtitle"></p>
                                     </div>
                                 </div>
-                                <div style="display: flex; gap: 0.75rem;">
-                                    <button id="documentPageDownloadBtn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; transition: all 0.3s; box-shadow: 0 4px 12px rgba(16,185,129,0.4);">
+                                <div class="document-viewer-actions">
+                                    <button id="documentPageDownloadBtn" class="doc-download-btn">
                                         <i class="fas fa-download"></i>
-                                        Download
+                                        <span class="btn-text">Download</span>
                                     </button>
-                                    <button onclick="toggleDocumentFullscreen()" style="background: rgba(102,126,234,0.1); border: 2px solid rgba(102,126,234,0.3); color: #667eea; padding: 0.75rem 1.25rem; border-radius: 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; transition: all 0.3s;">
+                                    <button onclick="toggleDocumentFullscreen()" class="doc-fullscreen-btn">
                                         <i class="fas fa-expand"></i>
-                                        Fullscreen
+                                        <span class="btn-text">Fullscreen</span>
                                     </button>
                                 </div>
                             </div>
 
                             <!-- Beautiful iframe container with shadow and rounded corners -->
-                            <div id="pdfViewerContainer" style="flex: 1; position: relative; padding: 1.5rem; overflow: hidden;">
+                            <div id="pdfViewerContainer" class="pdf-viewer-container">
                                 <!-- Loading Animation -->
-                                <div id="documentLoadingAnimation" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 100; background: rgba(255,255,255,0.98); backdrop-filter: blur(20px); padding: 3rem 4rem; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.5);">
-                                    <div style="width: 80px; height: 80px; border: 4px solid rgba(102,126,234,0.2); border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem;"></div>
-                                    <p style="color: #1f2937; font-weight: 700; font-size: 1.3rem; margin: 0 0 0.5rem 0;">Loading Document...</p>
-                                    <p style="color: #6b7280; font-size: 0.95rem; margin: 0;">Please wait while we prepare your document</p>
+                                <div id="documentLoadingAnimation" class="document-loading">
+                                    <div class="loading-spinner"></div>
+                                    <p class="loading-title">Loading Document...</p>
+                                    <p class="loading-subtitle">Please wait while we prepare your document</p>
                                 </div>
                                 
                                 <!-- Beautiful iframe wrapper with shadow and rounded corners -->
-                                <div id="pdfIframeWrapper" style="width: 100%; height: 100%; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.5);"></div>
+                                <div id="pdfIframeWrapper" class="pdf-iframe-wrapper"></div>
                             </div>
                         </div>
                     </section>
@@ -20554,14 +21892,28 @@
                                         </div>
                                     </div>
 
-                                    <!-- Negative Marking Toggle -->
-                                    <div class="form-group" style="margin-bottom: 1rem;">
-                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                            <input type="checkbox" id="mockTestNegativeMarking" checked style="width: 20px; height: 20px; cursor: pointer;">
-                                            <span style="font-weight: 500;">Enable Negative Marking</span>
-                                        </label>
-                                        <p style="color: var(--gray-600); font-size: 0.85rem; margin-top: 0.5rem; margin-left: 28px;">
-                                            When enabled, wrong answers will deduct marks (typically -1 for each wrong answer)
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                        <div class="form-group">
+                                            <label for="mockTestMarksPerQuestion">Marks Per Question <span style="color: red;">*</span></label>
+                                            <input type="number" id="mockTestMarksPerQuestion" class="form-input" placeholder="4" min="1" max="10" value="4" required>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1.8rem;">
+                                                <input type="checkbox" id="mockTestNegativeMarking" checked style="width: 20px; height: 20px; cursor: pointer;">
+                                                <span style="font-weight: 500;">Enable Negative Marking</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 1rem; background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                        <p style="color: #856404; font-size: 0.9rem; margin: 0;">
+                                            <i class="fas fa-info-circle"></i> 
+                                            <strong>Negative Marking:</strong> When enabled, 25% of marks per question will be deducted for each wrong answer.
+                                            <br>
+                                            <span style="font-size: 0.85rem; margin-left: 1.2rem;">
+                                                Example: If marks per question = 4, then wrong answer = -1 mark
+                                            </span>
                                         </p>
                                     </div>
 
@@ -37682,6 +39034,7 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                 const examType = document.getElementById('mockTestExam').value;
                 const duration = parseInt(document.getElementById('mockTestDuration').value);
                 const description = document.getElementById('mockTestDescription').value.trim();
+                const marksPerQuestion = parseInt(document.getElementById('mockTestMarksPerQuestion').value);
                 const negativeMarking = document.getElementById('mockTestNegativeMarking').checked;
 
                 // Validate required fields
@@ -37697,6 +39050,10 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                     showNotification('❌ Please enter a valid duration (minimum 30 minutes)', 'error');
                     return;
                 }
+                if (!marksPerQuestion || marksPerQuestion < 1) {
+                    showNotification('❌ Please enter valid marks per question (minimum 1)', 'error');
+                    return;
+                }
 
                 // Get selected question IDs
                 const selectedQuestionIds = JSON.parse(document.getElementById('selectedQuestionIds').value || '[]');
@@ -37706,6 +39063,9 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                     return;
                 }
 
+                // Calculate negative marks (25% of marks per question)
+                const negativeMarks = negativeMarking ? -(marksPerQuestion * 0.25) : 0;
+
                 // Create mock test object
                 const mockTest = {
                     name: testName,
@@ -37714,7 +39074,10 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                     description: description,
                     questionIds: selectedQuestionIds,
                     totalQuestions: selectedQuestionIds.length,
+                    marksPerQuestion: marksPerQuestion,
                     negativeMarking: negativeMarking,
+                    negativeMarks: negativeMarks,
+                    totalMarks: selectedQuestionIds.length * marksPerQuestion,
                     createdBy: currentUser?.username || 'admin',
                     isPublic: true,
                     status: 'active'
@@ -37759,8 +39122,9 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
         function resetMockTestForm() {
             document.getElementById('mockTestName').value = '';
             document.getElementById('mockTestExam').value = '';
-            document.getElementById('mockTestNegativeMarking').checked = true;
             document.getElementById('mockTestDuration').value = '';
+            document.getElementById('mockTestMarksPerQuestion').value = '4';
+            document.getElementById('mockTestNegativeMarking').checked = true;
             document.getElementById('mockTestDescription').value = '';
             
             // Reset selected questions
@@ -38503,8 +39867,8 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
             
             clearInterval(activeMockTimer);
             
-            // Get test configuration - use mock test's negativeMarking setting
-            const marksPerQuestion = currentTestConfig?.marksPerQuestion || 4;
+            // Get test configuration - use mock test's settings
+            const marksPerQuestion = activeMockTest?.marksPerQuestion || 4;
             const hasNegativeMarking = activeMockTest?.negativeMarking !== undefined ? activeMockTest.negativeMarking : true;
             const negativeMarksPerQuestion = hasNegativeMarking ? (marksPerQuestion * 0.25) : 0;
             
@@ -38512,7 +39876,7 @@ Format the response as a JSON array of question objects. Use proper LaTeX syntax
                 marksPerQuestion,
                 hasNegativeMarking,
                 negativeMarksPerQuestion,
-                mockTestNegativeMarking: activeMockTest?.negativeMarking
+                mockTestData: activeMockTest
             });
             
             // Calculate score
