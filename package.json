@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server-multi-ai.js",
     "dev": "nodemon server-multi-ai.js",
-    "postinstall": "playwright install chromium"
+    "build": "playwright install chromium"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
